@@ -1,0 +1,16 @@
+# Ship the importable package only. Everything else (tests, docs, CI config,
+# project metadata files) is excluded so the sdist installs just the code.
+graft strip_comments
+
+prune tests
+prune docs
+prune .github
+
+exclude CLAUDE.md
+exclude README.md
+exclude LICENSE
+exclude Makefile
+exclude .gitignore
+
+global-exclude __pycache__
+global-exclude *.py[cod]

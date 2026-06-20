@@ -1,0 +1,8 @@
+# Project configuration
+[project]
+name = "strip-comments"  # package name
+version = "1.0.0"
+
+# Dependencies
+[dependencies]
+tree-sitter = "*"

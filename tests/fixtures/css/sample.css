@@ -1,0 +1,10 @@
+/* Block comment */
+body {
+    margin: 0; /* inline comment */
+    padding: 0;
+}
+
+/* Another block */
+h1 {
+    color: blue;
+}
