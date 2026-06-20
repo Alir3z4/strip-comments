@@ -52,13 +52,15 @@ The pipeline is: **file → parse (tree-sitter) → strip → format → output*
 2. `parser.py` maps file extensions to tree-sitter grammar modules via `_EXTENSION_TO_MODULE`, lazily importing the language package. Raises `GrammarNotInstalledError` if the grammar is missing.
 3. `languages.py` defines a `LanguageConfig` per extension, declaring which AST node types count as comments and docstrings. Docstring detection for Python uses a custom `_is_python_docstring` heuristic (string literal as first named child of module/block).
 4. `stripper.py` walks the AST recursively, collects byte ranges of nodes matching the config's comment/docstring types, merges overlapping ranges, and reconstructs the source with those bytes removed. After removal, **blank lines are always stripped** and trailing whitespace is cleaned from all remaining lines, producing compact output. The final result ends with a single newline (or is empty string if nothing remains).
-5. `formatters.py` renders results as plain text (`FileResult` with `=== path ===` headers) or JSON.
+5. `compact.py` provides `compact_python`, which whitespace-compacts Python source by re-serializing the parsed AST with the stdlib `ast.unparse` (multi-line statements collapse onto single lines, **one logical statement per line** with no semicolon chaining; comments/docstrings/blank lines removed; identifiers and type annotations preserved). For `.py` files this is **default-on**; `process_file`/`process_stdin` consult `getattr(args, "compact", True)` and fall back to the tree-sitter `strip_comments` path on any exception (e.g. `SyntaxError` on invalid or newer-than-interpreter syntax). The `--no-compact` flag opts out. Non-Python files always use the tree-sitter path.
+6. `formatters.py` renders results as plain text (`FileResult` with `=== path ===` headers) or JSON.
 
 ### Key Design Decisions
 
 - **Byte-range removal, not AST-to-source**: The tool operates on raw source bytes using tree-sitter node byte offsets. It never re-serializes the AST, which preserves formatting and avoids tree-sitter limitations on round-tripping.
 - **Per-language configs are declarative**: `LanguageConfig` uses sets of AST node type strings. Adding a new language means adding an entry to `_EXTENSION_TO_MODULE` in `parser.py` and `LANGUAGE_MAP` in `languages.py`.
 - **Optional grammars**: Only `tree-sitter-python` is a hard dependency. All others are optional extras declared in `pyproject.toml`. The CLI gracefully skips files with missing grammars in directory mode.
+- **Python compaction via stdlib `ast.unparse`**: Python whitespace compaction re-serializes the AST with `ast.unparse` rather than hand-rolling a minifier, so the output is always valid, semantically-equivalent Python (CPython's own unparser handles all whitespace-significance edge cases). Re-serialization normalizes cosmetics (string quotes, redundant parens/spacing), which is irrelevant for read-only use. This is Python-only because `ast.unparse` is Python-specific; the `args.compact` plumbing already spans all languages for a future tree-sitter continuation-line join.
 
 ## Project Configuration
 

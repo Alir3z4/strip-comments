@@ -4,6 +4,13 @@ Strip comments and documentation from source files using tree-sitter.
 Blank lines are removed from the output by default, producing compact, token-efficient code.
 Designed for AI coding agents to read code without comment noise.
 
+For Python files, output is additionally **whitespace-compacted** by default:
+multi-line statements (such as a wrapped `models.ForeignKey(...)` call) collapse onto
+single lines, keeping one logical statement per line. Compaction is semantics-preserving
+(it re-serializes the parsed AST) — identifiers and type annotations are kept intact.
+Pass `--no-compact` to keep the original multi-line layout. Other languages are
+unaffected by this flag.
+
 ## Installation
 
 ### pip
@@ -153,6 +160,7 @@ omits text, so it must not be used as the basis for edits.
 ## Options
 
 - `--json` — Output as JSON instead of plain text
+- `--no-compact` — Disable Python whitespace compaction (keep original layout)
 - `--include PATTERN` — Include files matching glob pattern
 - `--exclude PATTERN` — Exclude files matching glob pattern
 - `--no-default-excludes` — Do not exclude common directories
