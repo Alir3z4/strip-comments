@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 
+from strip_comments.compact import compact_python
 from strip_comments.formatters import FileResult, format_json, format_plain
 from strip_comments.languages import get_language_config
 from strip_comments.parser import GrammarNotInstalledError, UnsupportedExtensionError, load_language, parse
@@ -137,7 +138,14 @@ def process_file(path: str, args: argparse.Namespace) -> FileResult:
 
     tree = parse(source, lang)
 
-    content = strip_comments(tree, config, source)
+    if ext == ".py" and getattr(args, "compact", True):
+        try:
+            content = compact_python(source)
+        except Exception:
+            # Invalid Python or unsupported syntax: fall back to tree-sitter path.
+            content = strip_comments(tree, config, source)
+    else:
+        content = strip_comments(tree, config, source)
 
     return FileResult(path=path, content=content)
 
@@ -167,7 +175,14 @@ def process_stdin(args: argparse.Namespace) -> FileResult:
     config = get_language_config(ext)
     tree = parse(source, lang)
 
-    content = strip_comments(tree, config, source)
+    if ext == ".py" and getattr(args, "compact", True):
+        try:
+            content = compact_python(source)
+        except Exception:
+            # Invalid Python or unsupported syntax: fall back to tree-sitter path.
+            content = strip_comments(tree, config, source)
+    else:
+        content = strip_comments(tree, config, source)
 
     return FileResult(path=args.stdin_filename, content=content)
 
@@ -185,6 +200,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         default=False,
         help="Do not exclude common directories (e.g. node_modules, __pycache__, .venv)",
+    )
+    parser.add_argument(
+        "--no-compact",
+        dest="compact",
+        action="store_false",
+        default=True,
+        help="Disable Python whitespace compaction (keep original layout)",
     )
 
     # Stdin support

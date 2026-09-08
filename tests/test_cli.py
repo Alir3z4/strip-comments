@@ -99,7 +99,7 @@ class TestCli(unittest.TestCase):
             self.assertIn("x = 1", output)
             self.assertNotIn("Module docstring", output)
             self.assertNotIn("# comment", output)
-            # Extract content after the header
+            # Extract content after the header.
             content = output.split(f"=== {path} ===\n\n")[1].rstrip("\n")
             self.assertEqual(content, "import os\nx = 1")
         finally:
@@ -341,3 +341,95 @@ class TestCli(unittest.TestCase):
             code = main(["--stdin"])
         self.assertEqual(code, 2)
         self.assertIn("--lang", fake_stderr.getvalue())
+
+    MULTILINE_PY = (
+        '"""Module docstring."""\n'
+        "\n"
+        "\n"
+        "def make_field(\n"
+        "    name: str,\n"
+        "    default: int = 0,\n"
+        ") -> dict:\n"
+        '    """Build a field."""\n'
+        "    # inline comment\n"
+        "    return models.ForeignKey(\n"
+        "        to=name,\n"
+        "        on_delete=models.CASCADE,\n"
+        "        default=default,\n"
+        "    )\n"
+    )
+
+    def test_compaction_collapses_multiline_by_default(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(self.MULTILINE_PY)
+            path = f.name
+        try:
+            with patch("sys.stdout", new=StringIO()) as fake_stdout:
+                code = main([path])
+            self.assertEqual(code, 0)
+            content = fake_stdout.getvalue().split(f"=== {path} ===\n\n")[1]
+            # The wrapped multi-arg call collapses onto a single line (no ; chaining).
+            self.assertIn("return models.ForeignKey(to=name, on_delete=models.CASCADE, default=default)", content)
+            self.assertNotIn(";", content)
+            # Comments and docstrings are gone.
+            self.assertNotIn("Module docstring", content)
+            self.assertNotIn("Build a field", content)
+            self.assertNotIn("inline comment", content)
+            # Identifiers and type annotations are preserved.
+            self.assertIn("def make_field(name: str, default: int=0) -> dict:", content)
+        finally:
+            os.unlink(path)
+
+    def test_no_compact_keeps_multiline_layout(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(self.MULTILINE_PY)
+            path = f.name
+        try:
+            with patch("sys.stdout", new=StringIO()) as fake_stdout:
+                code = main([path, "--no-compact"])
+            self.assertEqual(code, 0)
+            content = fake_stdout.getvalue().split(f"=== {path} ===\n\n")[1]
+            # Without compaction, the original multi-line layout (and spacing) is kept.
+            self.assertIn("def make_field(\n", content)
+            self.assertIn("    name: str,\n", content)
+            self.assertIn("        on_delete=models.CASCADE,\n", content)
+            # Comments and docstrings are still removed by the tree-sitter path.
+            self.assertNotIn("Module docstring", content)
+            self.assertNotIn("Build a field", content)
+            self.assertNotIn("inline comment", content)
+        finally:
+            os.unlink(path)
+
+    def test_invalid_python_falls_back_to_tree_sitter(self) -> None:
+        # Syntactically-invalid Python: compaction raises, tree-sitter path takes over.
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("def broken(  # comment\nx = 1\n")
+            path = f.name
+        try:
+            with patch("sys.stdout", new=StringIO()) as fake_stdout:
+                code = main([path])
+            self.assertEqual(code, 0)
+            output = fake_stdout.getvalue()
+            # Did not raise, produced output, and stripped the comment.
+            self.assertIn(path, output)
+            self.assertNotIn("# comment", output)
+        finally:
+            os.unlink(path)
+
+    def test_non_python_unaffected_by_compact_flag(self) -> None:
+        go_source = "package main\n\n// a comment\nfunc main(\n\ta int,\n\tb int,\n) {\n}\n"
+        for argv_extra in ([], ["--no-compact"]):
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".go", delete=False) as f:
+                f.write(go_source)
+                path = f.name
+            try:
+                with patch("sys.stdout", new=StringIO()) as fake_stdout:
+                    code = main([path, *argv_extra])
+                self.assertEqual(code, 0)
+                content = fake_stdout.getvalue().split(f"=== {path} ===\n\n")[1]
+                # Go is never compacted: multi-line signature layout is preserved.
+                self.assertIn("func main(\n", content)
+                self.assertIn("\ta int,\n", content)
+                self.assertNotIn("// a comment", content)
+            finally:
+                os.unlink(path)
